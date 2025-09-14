@@ -1,0 +1,46 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${DB_NAME:-smartcity}
+      POSTGRES_USER: ${DB_USER:-city}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-city}
+    ports: ["5432:5432"]
+    volumes: [ "pgdata:/var/lib/postgresql/data" ]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${DB_USER:-city}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports: ["1883:1883", "9001:9001"]
+    volumes:
+      - ./ops/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+
+  backend:
+    build: ./backend
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+    ports: ["8000:8000"]
+    volumes:
+      - ./backend/app:/app/app
+
+  simulator:
+    build: ./sensor_simulator
+    env_file: .env
+    depends_on:
+      backend:
+        condition: service_started
+      mosquitto:
+        condition: service_started
+    stdin_open: true
+    tty: true
+
+volumes:
+  pgdata:
